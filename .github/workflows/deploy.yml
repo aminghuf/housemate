@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 env:
-  IMAGE: aminghuf/housemate
+  IMAGE: aminghazizadeh/housematebot
 
 jobs:
   test:
