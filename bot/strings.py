@@ -39,6 +39,8 @@ DONE_BUTTON_TOAST = "ثبت شد ✅"
 NOT_YOUR_SHARE = "فقط سهم خودتون رو می‌تونید علامت بزنید"
 CONFIRM_YES = "✅ تایید"
 CONFIRM_CANCEL = "❌ لغو"
+VOLUNTEER_NOTE = "\n🙋 نوبت {assigned_name} بود، ولی داوطلبانه انجام شد."
+VOLUNTEER_INLINE_SUFFIX = " (🙋 به‌جای {assigned_name})"
 
 # --- Trash duty (§5) ---
 BTN_TRASH_DONE = "✅ انداختم دور"
@@ -54,6 +56,15 @@ TRASH_HISTORY_ENTRY = "{date} — {trash_type} — {assigned} — {status}"
 TRASH_STATUS_PENDING = "⏳ در انتظار"
 TRASH_STATUS_DONE = "✅ انجام شد"
 TRASH_STATUS_SKIPPED = "🔁 لازم نبود"
+TRASH_FORECAST_BUTTON = "📅 ۷ روز آینده"
+TRASH_FORECAST_HEADER = "📅 پیش‌بینی نوبت زباله (۷ روز آینده):"
+TRASH_FORECAST_LINE = "{date} ({trash_type}): {name}{marker}"
+TRASH_FORECAST_NO_HOUSEMATES_LINE = "{date} ({trash_type}): کسی توی چرخه نیست"
+TRASH_FORECAST_PROJECTED_MARK = " (پیش‌بینی)"
+TRASH_FORECAST_FOOTNOTE = (
+    "\n⚠️ مواردی که «پیش‌بینی» دارن قطعی نیستن — اگه یکی «نیاز نبود» بزنه، نوبت‌های بعدی جابه‌جا میشن."
+)
+TRASH_HISTORY_VOLUNTEER_SUFFIX = " (🙋 {doer})"
 
 # --- Bills (§6) ---
 BILLS_MENU_NEW = "➕ صورتحساب جدید"
@@ -113,6 +124,12 @@ CLEANING_HISTORY_ENTRY = "{week} — {section} — {name} — {status}"
 CLEANING_STATUS_PENDING = "⏳ در انتظار"
 CLEANING_STATUS_DONE = "✅ انجام شد"
 CLEANING_STATUS_SKIPPED = "➖ لازم نبود"
+CLEANING_FORECAST_BUTTON = "📅 ۷ روز آینده"
+CLEANING_FORECAST_HEADER = "📅 پیش‌بینی نوبت نظافت (۷ روز آینده):"
+CLEANING_FORECAST_DATE_HEADER = "📆 {date}{marker}"
+CLEANING_FORECAST_NOT_POSTED_MARK = " (هنوز پست نشده)"
+CLEANING_FORECAST_SECTION_LINE = "   {section}: {name}"
+CLEANING_FORECAST_NO_HOUSEMATES = "   کسی توی چرخه نیست"
 
 # --- Admin (§10) ---
 ADMIN_MENU_TEXT = (

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import strings
 from bot.db.models import CleaningRotation, User
 from bot.services import cleaning as cleaning_service, rotation
-from bot.utils import pagination_keyboard
+from bot.utils import pagination_keyboard, weekday_date_str
 
 router = Router(name="cleaning")
 
@@ -31,12 +31,19 @@ async def cb_cleaning_skip(query: CallbackQuery, callback_data: cleaning_service
     await query.answer(strings.DONE_BUTTON_TOAST if ok else error, show_alert=not ok)
 
 
+def _forecast_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=strings.CLEANING_FORECAST_BUTTON, callback_data="cleaning_menu:forecast")]]
+    )
+
+
 @router.message(F.text == strings.MENU_CLEANING)
 async def cleaning_menu(message: Message, session: AsyncSession) -> None:
     logs = await cleaning_service.get_current_week_logs(session)
     if not logs:
         queue = await rotation.get_ordered_queue(session, CleaningRotation)
-        await message.answer(strings.CLEANING_NO_HOUSEMATES if not queue else strings.CLEANING_THIS_WEEK_EMPTY)
+        text = strings.CLEANING_NO_HOUSEMATES if not queue else strings.CLEANING_THIS_WEEK_EMPTY
+        await message.answer(text, reply_markup=_forecast_keyboard())
         return
 
     lines = [strings.CLEANING_HEADER]
@@ -45,7 +52,41 @@ async def cleaning_menu(message: Message, session: AsyncSession) -> None:
         section_label = cleaning_service.SECTION_LABELS[log.section]
         status = _STATUS_LABELS[log.status]
         lines.append(f"{section_label}: {user.display_name} — {status}")
-    await message.answer("\n".join(lines))
+    await message.answer("\n".join(lines), reply_markup=_forecast_keyboard())
+
+
+async def _render_forecast(session: AsyncSession) -> str:
+    entries = await cleaning_service.get_forecast(session, days=7)
+    if not entries:
+        return strings.NOTHING_TO_SHOW
+
+    lines = [strings.CLEANING_FORECAST_HEADER]
+    for entry in entries:
+        marker = "" if not entry.is_projected else strings.CLEANING_FORECAST_NOT_POSTED_MARK
+        lines.append(strings.CLEANING_FORECAST_DATE_HEADER.format(date=weekday_date_str(entry.date), marker=marker))
+        if not entry.assignments:
+            lines.append(strings.CLEANING_FORECAST_NO_HOUSEMATES)
+            continue
+        for section in cleaning_service.SECTION_ORDER:
+            if section not in entry.assignments:
+                continue
+            user, status = entry.assignments[section]
+            section_label = cleaning_service.SECTION_LABELS[section]
+            name = user.display_name if user else "?"
+            status_suffix = f" — {_STATUS_LABELS[status]}" if status else ""
+            lines.append(strings.CLEANING_FORECAST_SECTION_LINE.format(section=section_label, name=name) + status_suffix)
+    return "\n".join(lines)
+
+
+@router.message(Command("cleaning_upcoming"))
+async def cleaning_upcoming(message: Message, session: AsyncSession) -> None:
+    await message.answer(await _render_forecast(session))
+
+
+@router.callback_query(F.data == "cleaning_menu:forecast")
+async def cleaning_forecast_from_menu(query: CallbackQuery, session: AsyncSession) -> None:
+    await query.answer()
+    await query.message.answer(await _render_forecast(session))
 
 
 async def _render_history_page(session: AsyncSession, page: int):

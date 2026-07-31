@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import dataclass
 
 from aiogram import Bot
 from aiogram.filters.callback_data import CallbackData
@@ -65,16 +66,20 @@ async def create_daily_log_and_post(bot: Bot, session: AsyncSession, *, date: dt
 
 
 async def handle_done(session: AsyncSession, bot: Bot, log_id: int, acting_user_id: int) -> tuple[bool, str]:
+    """Marks a pending trash log as done. Anyone can tap this — not just the
+    assigned housemate — so covering someone else's turn is a normal,
+    recordable action (spec update: "voluntarily do a job"). The rotation
+    still advances past the *assigned* person's turn either way, since the
+    day's duty is fulfilled regardless of who physically did it."""
     log = await session.get(TrashLog, log_id)
     if log is None:
         return False, strings.NOTHING_TO_SHOW
-    if log.assigned_user_id != acting_user_id:
-        return False, strings.NOT_YOUR_TURN
     if log.status != "pending":
         return False, strings.ALREADY_HANDLED
 
     log.status = "done"
     log.responded_at = dt.datetime.utcnow()
+    log.completed_by_user_id = acting_user_id
     await session.flush()
 
     queue = await rotation.get_ordered_queue(session, TrashRotation)
@@ -82,10 +87,13 @@ async def handle_done(session: AsyncSession, bot: Bot, log_id: int, acting_user_
     new_position = rotation.advance_position(position, len(queue))
     await settings_store.set_setting(session, settings_store.TRASH_CURRENT_POSITION, str(new_position))
 
-    user = await session.get(User, acting_user_id)
+    doer = await session.get(User, acting_user_id)
     text = strings.TRASH_DONE_CONFIRMATION.format(
-        trash_type=log.trash_type, mention=mention(user), timestamp=now_str()
+        trash_type=log.trash_type, mention=mention(doer), timestamp=now_str()
     )
+    if acting_user_id != log.assigned_user_id:
+        assigned = await session.get(User, log.assigned_user_id)
+        text += strings.VOLUNTEER_NOTE.format(assigned_name=assigned.display_name)
     await bot.edit_message_text(
         chat_id=settings.house_channel_id, message_id=log.message_id, text=text, parse_mode="HTML"
     )
@@ -139,3 +147,56 @@ async def get_history_page(session: AsyncSession, page: int, page_size: int = 5)
     rows = list(result.scalars().all())
     has_next = len(rows) > page_size
     return rows[:page_size], has_next
+
+
+@dataclass
+class TrashForecastEntry:
+    date: dt.date
+    trash_type: str | None  # None means no collection that day
+    user: User | None
+    is_projected: bool  # False = backed by a real (already-created) log
+
+
+async def get_forecast(session: AsyncSession, days: int = 7, start_date: dt.date | None = None) -> list[TrashForecastEntry]:
+    """Best-effort forecast of the next `days` days of trash duty.
+
+    Days with an already-created log (today, or a past day within the
+    window) are authoritative. Everything else is a *projection* that
+    assumes each remaining pending day gets marked "✅ انداختم دور"
+    normally — since a "❌ نیاز نبود" skip doesn't advance the queue
+    (spec §5.2/§13.1), an actual skip on any of those days shifts
+    everything projected after it. This is why the forecast is presented
+    as a prediction, not a guarantee.
+    """
+    start_date = start_date or dt.date.today()
+    anchor = await settings_store.get_trash_alternation_anchor(session)
+    queue = await rotation.get_ordered_queue(session, TrashRotation)
+    position = await settings_store.get_int(session, settings_store.TRASH_CURRENT_POSITION, 0)
+
+    entries: list[TrashForecastEntry] = []
+    offset = 0
+    for i in range(days):
+        date = start_date + dt.timedelta(days=i)
+        trash_type = trash_schedule.get_trash_type(date, anchor)
+        if trash_type is None:
+            entries.append(TrashForecastEntry(date=date, trash_type=None, user=None, is_projected=False))
+            continue
+
+        log = await get_today_log(session, date)
+        if log is not None:
+            user = await session.get(User, log.assigned_user_id)
+            entries.append(TrashForecastEntry(date=date, trash_type=trash_type, user=user, is_projected=False))
+            if log.status != "done":
+                offset += 1
+            continue
+
+        if not queue:
+            entries.append(TrashForecastEntry(date=date, trash_type=trash_type, user=None, is_projected=True))
+            continue
+
+        row = rotation.user_at(queue, position + offset)
+        user = await session.get(User, row.user_id)
+        entries.append(TrashForecastEntry(date=date, trash_type=trash_type, user=user, is_projected=True))
+        offset += 1
+
+    return entries

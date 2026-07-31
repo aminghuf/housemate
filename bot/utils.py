@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from bot import strings
 from bot.config import settings
 from bot.db.models import User
 
@@ -29,6 +30,10 @@ def format_dt(value: dt.datetime) -> str:
     """Formats a naive UTC datetime (as stored in the DB) in the configured local timezone."""
     aware = value.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo(settings.timezone))
     return aware.strftime("%Y-%m-%d %H:%M")
+
+
+def weekday_date_str(date: dt.date) -> str:
+    return f"{strings.WEEKDAY_LABELS_FA[date.weekday()]} {date.isoformat()}"
 
 
 def pagination_keyboard(prefix: str, page: int, has_next: bool) -> InlineKeyboardMarkup | None:

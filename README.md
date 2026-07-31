@@ -8,7 +8,8 @@ membership in a household Telegram channel.
 
 - 🗑️ **Trash duty** — fixed weekly collection schedule (with the
   Tuesday Carta e Cartone / Vetro alternation), single round-robin queue,
-  daily reminder with ✅/❌ buttons, history.
+  daily reminder with ✅/❌ buttons, history, and a `/trash_upcoming`
+  7-day forecast.
 - 💸 **Bills** — anyone creates a bill via a guided conversation, split
   evenly among active housemates, posted to the channel with a
   pay-yourself-off button per person, `/my_bills`, `/bills_history`,
@@ -16,9 +17,16 @@ membership in a household Telegram channel.
 - 🛒 **Shopping list** — one live, pinned message in the channel; add
   items, mark purchased, `/shopping_history`.
 - 🧹 **Cleaning turns** — weekly rotation across 3 sections (kitchen,
-  hall, bathroom), reminder with per-section ✅/➖ buttons, history.
+  hall, bathroom), reminder with per-section ✅/➖ buttons, history, and a
+  `/cleaning_upcoming` 7-day forecast.
+- 🙋 **Volunteering** — "✅ انداختم دور" / "✅ تمیز کردم" can be tapped by
+  *any* housemate, not just whoever it's assigned to — covering someone
+  else's turn is recorded (who was assigned vs. who actually did it) and
+  shown in history. The "not needed yet" / "not needed" buttons stay
+  restricted to the assigned person, since that's a judgment call tied to
+  their specific turn.
 - ⚙️ **Admin** — configurable reminder times, rotation reordering,
-  add/remove housemates, audit log.
+  add/remove housemates, channel announcements, audit log.
 
 See [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md) (the original spec handed
 to Claude Code) for the full design rationale. A few open questions from

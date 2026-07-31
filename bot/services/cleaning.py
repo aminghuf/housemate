@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import html
+from dataclasses import dataclass
 from typing import Sequence
 
 from aiogram import Bot
@@ -100,11 +101,13 @@ async def _render_message(session: AsyncSession, logs: Sequence[CleaningLog]) ->
                 ]
             )
         elif log.status == "done":
-            lines.append(
-                strings.CLEANING_SECTION_DONE_LINE.format(
-                    section=section_label, name=html.escape(user.display_name), timestamp=format_dt(log.responded_at)
-                )
+            doer = await session.get(User, log.completed_by_user_id) if log.completed_by_user_id else user
+            line = strings.CLEANING_SECTION_DONE_LINE.format(
+                section=section_label, name=html.escape(doer.display_name), timestamp=format_dt(log.responded_at)
             )
+            if log.completed_by_user_id and log.completed_by_user_id != log.user_id:
+                line += strings.VOLUNTEER_INLINE_SUFFIX.format(assigned_name=html.escape(user.display_name))
+            lines.append(line)
         else:
             lines.append(
                 strings.CLEANING_SECTION_SKIPPED_LINE.format(
@@ -120,16 +123,22 @@ async def _render_message(session: AsyncSession, logs: Sequence[CleaningLog]) ->
 async def handle_response(
     session: AsyncSession, bot: Bot, log_id: int, action: str, acting_user_id: int
 ) -> tuple[bool, str]:
+    """"✅ تمیز کردم" can be tapped by anyone — covering someone else's
+    section is a normal, recordable action (spec update: "voluntarily do a
+    job"). "➖ نیازی نبود" stays restricted to the assigned housemate, since
+    that's a judgment call tied to their specific section that week."""
     log = await session.get(CleaningLog, log_id)
     if log is None:
         return False, strings.NOTHING_TO_SHOW
-    if log.user_id != acting_user_id:
-        return False, strings.NOT_YOUR_TURN
     if log.status != "pending":
         return False, strings.ALREADY_HANDLED
+    if action == "skip" and log.user_id != acting_user_id:
+        return False, strings.NOT_YOUR_TURN
 
     log.status = "done" if action == "done" else "skipped_not_needed"
     log.responded_at = dt.datetime.utcnow()
+    if action == "done":
+        log.completed_by_user_id = acting_user_id
     await session.flush()
 
     siblings = (
@@ -162,3 +171,53 @@ async def get_history_page(session: AsyncSession, page: int, page_size: int = 5)
     rows = list(result.scalars().all())
     has_next = len(rows) > page_size
     return rows[:page_size], has_next
+
+
+@dataclass
+class CleaningForecastEntry:
+    date: dt.date
+    assignments: dict[str, tuple[User | None, str | None]]  # section -> (user, status or None if projected)
+    is_projected: bool
+
+
+async def get_forecast(session: AsyncSession, days: int = 7, start_date: dt.date | None = None) -> list[CleaningForecastEntry]:
+    """Forecast of upcoming cleaning Sundays within the window. Unlike
+    trash, this is fully deterministic: the cleaning rotation always
+    advances by 3 positions the moment assignments are posted, regardless
+    of each section's eventual done/skip outcome — so there's no
+    skip-related drift to warn about here."""
+    start_date = start_date or dt.date.today()
+    queue = await rotation.get_ordered_queue(session, CleaningRotation)
+    position = await settings_store.get_int(session, settings_store.CLEANING_CURRENT_POSITION, 0)
+
+    entries: list[CleaningForecastEntry] = []
+    offset = 0
+    for i in range(days):
+        date = start_date + dt.timedelta(days=i)
+        if date.weekday() != 6:  # only Sundays are cleaning days
+            continue
+
+        existing = (
+            await session.execute(select(CleaningLog).where(CleaningLog.week_start_date == date))
+        ).scalars().all()
+        if existing:
+            assignments: dict[str, tuple[User | None, str | None]] = {}
+            for log in sorted(existing, key=lambda log: SECTION_ORDER.index(log.section)):
+                user = await session.get(User, log.user_id)
+                assignments[log.section] = (user, log.status)
+            entries.append(CleaningForecastEntry(date=date, assignments=assignments, is_projected=False))
+            continue
+
+        if not queue:
+            entries.append(CleaningForecastEntry(date=date, assignments={}, is_projected=True))
+            continue
+
+        raw = assign_sections(queue, position + offset)
+        assignments = {}
+        for section, row in raw.items():
+            user = await session.get(User, row.user_id)
+            assignments[section] = (user, None)
+        entries.append(CleaningForecastEntry(date=date, assignments=assignments, is_projected=True))
+        offset += 3
+
+    return entries

@@ -45,8 +45,12 @@ class TrashLog(Base):
     responded_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Who actually did it — may differ from assigned_user_id when another
+    # housemate voluntarily covers someone else's turn.
+    completed_by_user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.telegram_id"), nullable=True)
 
-    assigned_user: Mapped[User] = relationship()
+    assigned_user: Mapped[User] = relationship(foreign_keys=[assigned_user_id])
+    completed_by: Mapped[User | None] = relationship(foreign_keys=[completed_by_user_id])
 
 
 class Bill(Base):
@@ -130,8 +134,12 @@ class CleaningLog(Base):
     responded_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Who actually cleaned it — may differ from user_id when another
+    # housemate voluntarily covers someone else's section.
+    completed_by_user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.telegram_id"), nullable=True)
 
-    user: Mapped[User] = relationship()
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    completed_by: Mapped[User | None] = relationship(foreign_keys=[completed_by_user_id])
 
 
 class Settings(Base):
