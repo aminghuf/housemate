@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import html
+
 from aiogram import F, Router
-from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.filters import Command, CommandObject, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import strings
@@ -15,6 +19,11 @@ from bot.services import rotation, settings_store
 router = Router(name="admin")
 
 
+class Announce(StatesGroup):
+    text = State()
+    confirm = State()
+
+
 async def _require_admin(message: Message) -> bool:
     if message.from_user.id not in settings.admin_id_set:
         await message.answer(strings.NOT_ADMIN)
@@ -22,11 +31,87 @@ async def _require_admin(message: Message) -> bool:
     return True
 
 
+def _admin_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=strings.ADMIN_ANNOUNCE_BUTTON, callback_data="admin_menu:announce")]]
+    )
+
+
 @router.message(F.text == strings.MENU_ADMIN)
 async def admin_menu(message: Message) -> None:
     if not await _require_admin(message):
         return
-    await message.answer(strings.ADMIN_MENU_TEXT)
+    await message.answer(strings.ADMIN_MENU_TEXT, reply_markup=_admin_menu_keyboard())
+
+
+async def _send_announce_preview(message: Message, text: str) -> None:
+    preview = strings.ADMIN_ANNOUNCE_PREVIEW.format(text=html.escape(text))
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=strings.CONFIRM_YES, callback_data="announce_confirm:yes"),
+                InlineKeyboardButton(text=strings.CONFIRM_CANCEL, callback_data="announce_confirm:no"),
+            ]
+        ]
+    )
+    await message.answer(preview, reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(Command("announce"), StateFilter(None))
+async def cmd_announce(message: Message, state: FSMContext, command: CommandObject) -> None:
+    if not await _require_admin(message):
+        return
+    if command.args:
+        text = command.args.strip()
+        await state.update_data(text=text)
+        await state.set_state(Announce.confirm)
+        await _send_announce_preview(message, text)
+        return
+    await state.set_state(Announce.text)
+    await message.answer(strings.ADMIN_ANNOUNCE_ASK_TEXT)
+
+
+@router.callback_query(StateFilter(None), F.data == "admin_menu:announce")
+async def start_announce_from_menu(query: CallbackQuery, state: FSMContext) -> None:
+    if query.from_user.id not in settings.admin_id_set:
+        await query.answer(strings.NOT_ADMIN, show_alert=True)
+        return
+    await state.set_state(Announce.text)
+    await query.answer()
+    await query.message.answer(strings.ADMIN_ANNOUNCE_ASK_TEXT)
+
+
+@router.message(Announce.text)
+async def process_announce_text(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer(strings.ADMIN_ANNOUNCE_ASK_TEXT)
+        return
+    await state.update_data(text=text)
+    await state.set_state(Announce.confirm)
+    await _send_announce_preview(message, text)
+
+
+@router.callback_query(Announce.confirm, F.data.startswith("announce_confirm:"))
+async def confirm_announce(query: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    action = query.data.split(":")[1]
+    if action == "no":
+        await state.clear()
+        await query.answer()
+        await query.message.answer(strings.ADMIN_ANNOUNCE_CANCELLED)
+        return
+
+    data = await state.get_data()
+    text = data["text"]
+    await query.bot.send_message(
+        settings.house_channel_id,
+        strings.ADMIN_ANNOUNCE_CHANNEL_POST.format(text=html.escape(text)),
+        parse_mode="HTML",
+    )
+    await admin_service.log_action(session, query.from_user.id, "announce", text[:200])
+    await state.clear()
+    await query.answer()
+    await query.message.answer(strings.ADMIN_ANNOUNCE_POSTED)
 
 
 @router.message(Command("set_trash_reminder_time"))

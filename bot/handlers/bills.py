@@ -102,8 +102,8 @@ async def process_amount(message: Message, state: FSMContext, session: AsyncSess
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=strings.BILL_CONFIRM_YES, callback_data="bill_confirm:yes"),
-                InlineKeyboardButton(text=strings.BILL_CONFIRM_CANCEL, callback_data="bill_confirm:no"),
+                InlineKeyboardButton(text=strings.CONFIRM_YES, callback_data="bill_confirm:yes"),
+                InlineKeyboardButton(text=strings.CONFIRM_CANCEL, callback_data="bill_confirm:no"),
             ]
         ]
     )

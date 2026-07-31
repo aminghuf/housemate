@@ -130,6 +130,7 @@ This runs `alembic upgrade head` automatically on container start (see
 
 | Command | Description |
 |---|---|
+| `/announce [text]` | Post an announcement to the channel (asks for text + confirms before posting if no text is given inline) |
 | `/set_trash_reminder_time HH:MM` | Change the daily trash reminder time |
 | `/set_cleaning_reminder <weekday> HH:MM` | Change the weekly cleaning reminder (weekday: `0`-`6`, Monday=`0`, or `mon`..`sun`) |
 | `/trash_rotation [id1 id2 ...]` | View, or reorder, the trash duty queue |

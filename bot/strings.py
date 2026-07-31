@@ -37,6 +37,8 @@ ALREADY_HANDLED = "این قبلاً ثبت شده"
 NOTHING_TO_SHOW = "چیزی برای نمایش نیست."
 DONE_BUTTON_TOAST = "ثبت شد ✅"
 NOT_YOUR_SHARE = "فقط سهم خودتون رو می‌تونید علامت بزنید"
+CONFIRM_YES = "✅ تایید"
+CONFIRM_CANCEL = "❌ لغو"
 
 # --- Trash duty (§5) ---
 BTN_TRASH_DONE = "✅ انداختم دور"
@@ -71,8 +73,6 @@ BILL_CONFIRM = (
     "👤 سهم هرنفر (تقریبی): {per_person}\n"
     "تایید می‌کنی؟"
 )
-BILL_CONFIRM_YES = "✅ تایید"
-BILL_CONFIRM_CANCEL = "❌ لغو"
 BILL_CANCELLED = "صورتحساب لغو شد."
 BILL_CREATED = "صورتحساب ثبت شد و توی کانال پست شد."
 BILL_HEADER = "💸 <b>{title}</b>"
@@ -117,6 +117,7 @@ CLEANING_STATUS_SKIPPED = "➖ لازم نبود"
 # --- Admin (§10) ---
 ADMIN_MENU_TEXT = (
     "⚙️ دستورات ادمین:\n"
+    "/announce <متن> (یا بدون متن برای شروع مکالمه)\n"
     "/set_trash_reminder_time HH:MM\n"
     "/set_cleaning_reminder <weekday 0-6|mon..sun> HH:MM\n"
     "/trash_rotation [id1 id2 ...]\n"
@@ -141,3 +142,10 @@ ADMIN_REMOVE_HOUSEMATE_USAGE = "استفاده: /remove_housemate <telegram_id>"
 ADMIN_HOUSEMATE_REMOVED = "{name} از چرخه‌ها حذف شد (تاریخچه‌ش نگه داشته میشه)."
 ADMIN_HOUSEMATE_NOT_FOUND = "همچین کسی پیدا نشد."
 WEEKDAY_LABELS_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"]
+
+ADMIN_ANNOUNCE_BUTTON = "📢 اعلامیه جدید"
+ADMIN_ANNOUNCE_ASK_TEXT = "متن اعلامیه رو بفرست."
+ADMIN_ANNOUNCE_PREVIEW = "📢 پیش‌نمایش اعلامیه:\n\n{text}\n\nپست بشه؟"
+ADMIN_ANNOUNCE_CHANNEL_POST = "📢 <b>اعلامیه</b>\n\n{text}"
+ADMIN_ANNOUNCE_CANCELLED = "اعلامیه لغو شد."
+ADMIN_ANNOUNCE_POSTED = "اعلامیه توی کانال پست شد."
