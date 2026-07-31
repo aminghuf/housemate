@@ -1,0 +1,15 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Always /data inside the container, regardless of what DB_PATH is
+      # set to in .env for local (non-Docker) dev.
+      - DB_PATH=/data/housemate.db
+    volumes:
+      - housemate_data:/data
+
+volumes:
+  housemate_data:
