@@ -11,6 +11,12 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Settings() validates at import time; tests never send real
+      # Telegram traffic, so these just need to be well-formed, not real.
+      BOT_TOKEN: "test-token"
+      HOUSE_CHANNEL_ID: "-1000000000000"
+      ADMIN_IDS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
