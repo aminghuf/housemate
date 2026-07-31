@@ -3,7 +3,7 @@ services:
     # Both `image` and `build` are set: locally, `docker compose up --build`
     # builds and tags this image; on the VPS (no source/Dockerfile present),
     # `docker compose pull` fetches the same tag from Docker Hub instead.
-    image: aminghuf/housemate:latest
+    image: aminghazizadeh/housematebot:latest
     build: .
     restart: unless-stopped
     env_file:
