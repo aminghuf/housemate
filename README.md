@@ -126,6 +126,66 @@ This runs `alembic upgrade head` automatically on container start (see
 `housemate_data` volume at `/data/housemate.db` regardless of what
 `DB_PATH` is set to for local dev — `docker-compose.yml` overrides it.
 
+## CI/CD: auto-deploy to a Hetzner VPS via Docker Hub
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs on every
+push to `main`: run tests → build the image → push it to Docker Hub as
+`aminghuf/housemate:latest` (and `:<commit-sha>`) → SSH into the VPS and
+`docker compose pull && docker compose up -d`.
+
+One-time setup, done outside this repo (nothing here can do these steps for
+you — they touch your Docker Hub account and your server):
+
+**1. Docker Hub access token** — Docker Hub → Account Settings → Security →
+New Access Token. Use a token, not your password.
+
+**2. A dedicated SSH deploy key** (don't reuse a personal key):
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f deploy_key -N ""
+```
+
+Add `deploy_key.pub`'s contents to `~/.ssh/authorized_keys` for the deploy
+user on the VPS. Keep `deploy_key` (the private half) for the next step —
+don't commit it anywhere.
+
+**3. GitHub repo secrets** — repo → Settings → Secrets and variables →
+Actions → New repository secret:
+
+| Secret | Value |
+|---|---|
+| `DOCKERHUB_USERNAME` | Your Docker Hub username |
+| `DOCKERHUB_TOKEN` | The access token from step 1 |
+| `VPS_HOST` | Your Hetzner VPS's IP or hostname |
+| `VPS_USER` | The SSH user the deploy key was added for |
+| `VPS_SSH_KEY` | Contents of `deploy_key` (the private key) |
+| `VPS_PORT` | Only if SSH isn't on port 22 |
+
+**4. One-time VPS setup:**
+
+```bash
+# On the VPS, as the deploy user:
+curl -fsSL https://get.docker.com | sh   # if Docker isn't installed yet
+
+mkdir -p /opt/housemate && cd /opt/housemate
+# Copy this repo's docker-compose.yml here (scp it, or paste it manually) —
+# `image:` is what matters; the `build: .` line is a no-op with no
+# Dockerfile present, `docker compose up -d` without `--build` never
+# triggers a build once the image has been pulled.
+
+cp .env.example .env
+nano .env   # fill in BOT_TOKEN, HOUSE_CHANNEL_ID, ADMIN_IDS, etc.
+# make sure DB_PATH=/data/housemate.db to match the volume mount
+
+docker login   # only needed if aminghuf/housemate is a private repo
+docker compose pull
+docker compose up -d
+```
+
+After that, every push to `main` redeploys automatically. To roll back,
+SSH in and run `docker compose pull` after re-pushing an older commit (or
+manually retag/pull a specific `:<sha>` and restart).
+
 ## Admin commands
 
 | Command | Description |
