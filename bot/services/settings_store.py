@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Settings
+from bot.utils import now_local
 
 TRASH_REMINDER_TIME = "trash_reminder_time"
 TRASH_ALTERNATION_ANCHOR_DATE = "trash_alternation_anchor_date"
@@ -16,7 +17,9 @@ CLEANING_REMINDER_TIME = "cleaning_reminder_time"
 CLEANING_CURRENT_POSITION = "cleaning_current_position"
 
 DEFAULTS = {
-    TRASH_REMINDER_TIME: "08:00",
+    # Evening before each collection day, so there's time to take the bin
+    # out before bed (spec update: night-before reminders).
+    TRASH_REMINDER_TIME: "20:00",
     CLEANING_REMINDER_WEEKDAY: "5",  # Saturday
     CLEANING_REMINDER_TIME: "21:00",
     TRASH_CURRENT_POSITION: "0",
@@ -54,7 +57,7 @@ async def get_trash_alternation_anchor(session: AsyncSession) -> dt.date:
     if value is not None:
         return dt.date.fromisoformat(value)
 
-    today = dt.date.today()
+    today = now_local().date()
     days_until_tuesday = (1 - today.weekday()) % 7  # Monday=0 .. Tuesday=1
     anchor = today + dt.timedelta(days=days_until_tuesday)
     await set_setting(session, TRASH_ALTERNATION_ANCHOR_DATE, anchor.isoformat())

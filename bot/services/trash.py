@@ -13,7 +13,7 @@ from bot import strings
 from bot.config import settings
 from bot.db.models import TrashLog, TrashRotation, User
 from bot.services import rotation, settings_store, trash_schedule
-from bot.utils import mention, now_str
+from bot.utils import mention, now_local, now_str
 
 
 class TrashCB(CallbackData, prefix="trash"):
@@ -38,7 +38,7 @@ def _keyboard(log_id: int) -> InlineKeyboardMarkup:
 
 
 async def create_daily_log_and_post(bot: Bot, session: AsyncSession, *, date: dt.date | None = None) -> TrashLog | None:
-    date = date or dt.date.today()
+    date = date or now_local().date()
     anchor = await settings_store.get_trash_alternation_anchor(session)
     trash_type = trash_schedule.get_trash_type(date, anchor)
     if trash_type is None:
@@ -124,7 +124,7 @@ async def handle_skip(session: AsyncSession, bot: Bot, log_id: int, acting_user_
 
 
 async def get_today_log(session: AsyncSession, date: dt.date | None = None) -> TrashLog | None:
-    date = date or dt.date.today()
+    date = date or now_local().date()
     result = await session.execute(select(TrashLog).where(TrashLog.date == date))
     return result.scalars().first()
 
@@ -133,7 +133,7 @@ async def get_today_info(session: AsyncSession, date: dt.date | None = None) -> 
     """Returns (today's trash type or None if no collection, today's log or
     None if not posted yet) — lets callers tell "no collection today" apart
     from "reminder just hasn't fired yet"."""
-    date = date or dt.date.today()
+    date = date or now_local().date()
     anchor = await settings_store.get_trash_alternation_anchor(session)
     trash_type = trash_schedule.get_trash_type(date, anchor)
     log = await get_today_log(session, date)
@@ -168,7 +168,7 @@ async def get_forecast(session: AsyncSession, days: int = 7, start_date: dt.date
     everything projected after it. This is why the forecast is presented
     as a prediction, not a guarantee.
     """
-    start_date = start_date or dt.date.today()
+    start_date = start_date or now_local().date()
     anchor = await settings_store.get_trash_alternation_anchor(session)
     queue = await rotation.get_ordered_queue(session, TrashRotation)
     position = await settings_store.get_int(session, settings_store.TRASH_CURRENT_POSITION, 0)

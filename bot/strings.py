@@ -45,7 +45,7 @@ VOLUNTEER_INLINE_SUFFIX = " (🙋 به‌جای {assigned_name})"
 # --- Trash duty (§5) ---
 BTN_TRASH_DONE = "✅ انداختم دور"
 BTN_TRASH_NOT_NEEDED = "❌ نیاز نبود / پر نشده هنوز"
-TRASH_REMINDER = "🗑️ نوبت زباله‌ست {mention}!\nامروز نوع زباله: <b>{trash_type}</b>"
+TRASH_REMINDER = "🗑️ {mention} فردا نوبت زباله‌ته!\nنوع زباله فردا: <b>{trash_type}</b>\nیادت نره امشب ببریش."
 TRASH_DONE_CONFIRMATION = "✅ زباله‌ی <b>{trash_type}</b> توسط {mention} انداخته شد.\n🕒 {timestamp}"
 TRASH_SKIPPED_CONFIRMATION = "🔁 بازبینی شد — لازم نبود ({mention})\n🕒 {timestamp}"
 TRASH_NO_COLLECTION_TODAY = "امروز یکشنبه‌ست و جمع‌آوری زباله نداریم."

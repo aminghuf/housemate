@@ -15,7 +15,7 @@ from bot import strings
 from bot.config import settings
 from bot.db.models import CleaningLog, CleaningRotation, User
 from bot.services import rotation, settings_store
-from bot.utils import format_dt, mention
+from bot.utils import format_dt, mention, now_local
 
 KITCHEN = "kitchen"
 HALL = "hall"
@@ -50,7 +50,7 @@ def next_cleaning_day(today: dt.date) -> dt.date:
 async def create_weekly_assignments_and_post(
     bot: Bot, session: AsyncSession, *, today: dt.date | None = None
 ) -> list[CleaningLog]:
-    week_start = next_cleaning_day(today or dt.date.today())
+    week_start = next_cleaning_day(today or now_local().date())
 
     queue = await rotation.get_ordered_queue(session, CleaningRotation)
     if not queue:
@@ -186,7 +186,7 @@ async def get_forecast(session: AsyncSession, days: int = 7, start_date: dt.date
     advances by 3 positions the moment assignments are posted, regardless
     of each section's eventual done/skip outcome — so there's no
     skip-related drift to warn about here."""
-    start_date = start_date or dt.date.today()
+    start_date = start_date or now_local().date()
     queue = await rotation.get_ordered_queue(session, CleaningRotation)
     position = await settings_store.get_int(session, settings_store.CLEANING_CURRENT_POSITION, 0)
 
