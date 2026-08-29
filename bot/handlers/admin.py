@@ -159,6 +159,22 @@ async def set_cleaning_reminder(message: Message, session: AsyncSession, command
     )
 
 
+@router.message(Command("set_cleaning_nag_time"))
+async def set_cleaning_nag_time(message: Message, session: AsyncSession, command: CommandObject) -> None:
+    if not await _require_admin(message):
+        return
+    parsed = admin_service.parse_time(command.args)
+    if parsed is None:
+        await message.answer(strings.ADMIN_INVALID_TIME)
+        return
+    hour, minute = parsed
+    time_str = command.args.strip()
+    await settings_store.set_setting(session, settings_store.CLEANING_NAG_TIME, time_str)
+    jobs.reschedule_cleaning_nag(hour, minute)
+    await admin_service.log_action(session, message.from_user.id, "set_cleaning_nag_time", time_str)
+    await message.answer(strings.ADMIN_CLEANING_NAG_TIME_SET.format(time=time_str))
+
+
 async def _rotation_command(message: Message, session: AsyncSession, command: CommandObject, model: type) -> None:
     if not await _require_admin(message):
         return

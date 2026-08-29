@@ -15,6 +15,7 @@ TRASH_CURRENT_POSITION = "trash_current_position"
 CLEANING_REMINDER_WEEKDAY = "cleaning_reminder_weekday"  # 0=Monday .. 6=Sunday
 CLEANING_REMINDER_TIME = "cleaning_reminder_time"
 CLEANING_CURRENT_POSITION = "cleaning_current_position"
+CLEANING_NAG_TIME = "cleaning_nag_time"
 
 DEFAULTS = {
     # Evening before each collection day, so there's time to take the bin
@@ -24,6 +25,8 @@ DEFAULTS = {
     CLEANING_REMINDER_TIME: "21:00",
     TRASH_CURRENT_POSITION: "0",
     CLEANING_CURRENT_POSITION: "0",
+    # Daily nag for cleaning sections still not ticked off.
+    CLEANING_NAG_TIME: "21:00",
 }
 
 

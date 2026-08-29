@@ -37,13 +37,16 @@ async def _register_jobs(scheduler: AsyncIOScheduler) -> None:
         trash_time = await settings_store.get_setting(session, settings_store.TRASH_REMINDER_TIME)
         cleaning_time = await settings_store.get_setting(session, settings_store.CLEANING_REMINDER_TIME)
         cleaning_weekday = await settings_store.get_int(session, settings_store.CLEANING_REMINDER_WEEKDAY)
+        nag_time = await settings_store.get_setting(session, settings_store.CLEANING_NAG_TIME)
         await session.commit()
 
     trash_hour, trash_minute = (int(x) for x in trash_time.split(":"))
     cleaning_hour, cleaning_minute = (int(x) for x in cleaning_time.split(":"))
+    nag_hour, nag_minute = (int(x) for x in nag_time.split(":"))
 
     jobs.register_trash_job(scheduler, trash_hour, trash_minute, settings.timezone)
     jobs.register_cleaning_job(scheduler, cleaning_weekday, cleaning_hour, cleaning_minute, settings.timezone)
+    jobs.register_cleaning_nag_job(scheduler, nag_hour, nag_minute, settings.timezone)
 
 
 def _build_dispatcher() -> Dispatcher:

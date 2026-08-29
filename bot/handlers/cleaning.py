@@ -16,6 +16,7 @@ _STATUS_LABELS = {
     "pending": strings.CLEANING_STATUS_PENDING,
     "done": strings.CLEANING_STATUS_DONE,
     "skipped_not_needed": strings.CLEANING_STATUS_SKIPPED,
+    cleaning_service.MISSED: strings.CLEANING_STATUS_MISSED,
 }
 
 
@@ -33,7 +34,9 @@ async def cb_cleaning_skip(query: CallbackQuery, callback_data: cleaning_service
 
 def _forecast_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=strings.CLEANING_FORECAST_BUTTON, callback_data="cleaning_menu:forecast")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text=strings.CLEANING_NEXT_WEEK_BUTTON, callback_data="cleaning_menu:forecast")]
+        ]
     )
 
 
@@ -56,25 +59,26 @@ async def cleaning_menu(message: Message, session: AsyncSession) -> None:
 
 
 async def _render_forecast(session: AsyncSession) -> str:
-    entries = await cleaning_service.get_forecast(session, days=7)
-    if not entries:
-        return strings.NOTHING_TO_SHOW
+    entry = await cleaning_service.get_next_week_assignments(session)
 
-    lines = [strings.CLEANING_FORECAST_HEADER]
-    for entry in entries:
-        marker = "" if not entry.is_projected else strings.CLEANING_FORECAST_NOT_POSTED_MARK
-        lines.append(strings.CLEANING_FORECAST_DATE_HEADER.format(date=weekday_date_str(entry.date), marker=marker))
-        if not entry.assignments:
-            lines.append(strings.CLEANING_FORECAST_NO_HOUSEMATES)
+    lines = [strings.CLEANING_NEXT_WEEK_HEADER.format(date=weekday_date_str(entry.date))]
+    if not entry.assignments:
+        lines.append(strings.CLEANING_NEXT_WEEK_NO_HOUSEMATES)
+        return "\n".join(lines)
+
+    for section in cleaning_service.SECTION_ORDER:
+        if section not in entry.assignments:
             continue
-        for section in cleaning_service.SECTION_ORDER:
-            if section not in entry.assignments:
-                continue
-            user, status = entry.assignments[section]
-            section_label = cleaning_service.SECTION_LABELS[section]
-            name = user.display_name if user else "?"
-            status_suffix = f" — {_STATUS_LABELS[status]}" if status else ""
-            lines.append(strings.CLEANING_FORECAST_SECTION_LINE.format(section=section_label, name=name) + status_suffix)
+        user, status = entry.assignments[section]
+        section_label = cleaning_service.SECTION_LABELS[section]
+        name = user.display_name if user else "?"
+        status_suffix = f" — {_STATUS_LABELS[status]}" if status else ""
+        lines.append(
+            strings.CLEANING_NEXT_WEEK_SECTION_LINE.format(section=section_label, name=name) + status_suffix
+        )
+    if entry.is_projected:
+        lines.append("")
+        lines.append(strings.CLEANING_NEXT_WEEK_PROJECTED_NOTE)
     return "\n".join(lines)
 
 

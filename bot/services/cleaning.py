@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
@@ -21,6 +22,9 @@ KITCHEN = "kitchen"
 HALL = "hall"
 BATHROOM = "bathroom"
 SECTION_ORDER = [KITCHEN, HALL, BATHROOM]
+# Terminal status for a section that was never responded to before its week
+# rolled over (see _close_out_stale_pending).
+MISSED = "missed"
 SECTION_LABELS = {
     KITCHEN: strings.CLEANING_SECTION_KITCHEN,
     HALL: strings.CLEANING_SECTION_HALL,
@@ -47,14 +51,53 @@ def next_cleaning_day(today: dt.date) -> dt.date:
     return today + dt.timedelta(days=days_ahead)
 
 
+def weekly_rotation_step(queue_length: int) -> int:
+    """How far to advance the cleaning queue each week.
+
+    The natural step is 3 (a fresh trio each week), but when the queue
+    length divides 3 — i.e. exactly 1 or 3 housemates — `(pos + 3) % n`
+    lands back on `pos`, freezing the rotation so everyone keeps the same
+    section week after week. Falling back to a step of 1 keeps people
+    cycling through the sections instead.
+    """
+    if queue_length <= 0:
+        return 0
+    return 3 if 3 % queue_length != 0 else 1
+
+
+async def _close_out_stale_pending(session: AsyncSession, before: dt.date) -> None:
+    """Marks still-pending sections from earlier weeks as `missed`, so a
+    week nobody responded to doesn't linger as the "current" week and
+    doesn't keep triggering the daily nag once a new week has started."""
+    stale = (
+        await session.execute(
+            select(CleaningLog).where(CleaningLog.week_start_date < before, CleaningLog.status == "pending")
+        )
+    ).scalars().all()
+    for log in stale:
+        log.status = MISSED
+    if stale:
+        await session.flush()
+
+
 async def create_weekly_assignments_and_post(
     bot: Bot, session: AsyncSession, *, today: dt.date | None = None
 ) -> list[CleaningLog]:
     week_start = next_cleaning_day(today or now_local().date())
 
+    already_posted = (
+        await session.execute(select(CleaningLog).where(CleaningLog.week_start_date == week_start))
+    ).scalars().first()
+    if already_posted is not None:
+        # Already announced for this week — don't post a duplicate, and
+        # don't advance the queue a second time.
+        return []
+
     queue = await rotation.get_ordered_queue(session, CleaningRotation)
     if not queue:
         return []
+
+    await _close_out_stale_pending(session, week_start)
 
     position = await settings_store.get_int(session, settings_store.CLEANING_CURRENT_POSITION, 0)
     assignments = assign_sections(queue, position)
@@ -67,7 +110,10 @@ async def create_weekly_assignments_and_post(
         logs.append(log)
     await session.flush()
 
-    new_position = rotation.advance_position(position, len(queue), step=3)
+    # Advances unconditionally — a week nobody finished must still hand the
+    # sections on to the next people rather than repeating the same trio.
+    step = weekly_rotation_step(len(queue))
+    new_position = rotation.advance_position(position, len(queue), step=step)
     await settings_store.set_setting(session, settings_store.CLEANING_CURRENT_POSITION, str(new_position))
 
     text, keyboard = await _render_message(session, logs)
@@ -108,6 +154,14 @@ async def _render_message(session: AsyncSession, logs: Sequence[CleaningLog]) ->
             if log.completed_by_user_id and log.completed_by_user_id != log.user_id:
                 line += strings.VOLUNTEER_INLINE_SUFFIX.format(assigned_name=html.escape(user.display_name))
             lines.append(line)
+        elif log.status == MISSED:
+            # Never responded to before the week rolled over, so there's no
+            # responded_at timestamp to show.
+            lines.append(
+                strings.CLEANING_SECTION_MISSED_LINE.format(
+                    section=section_label, name=html.escape(user.display_name)
+                )
+            )
         else:
             lines.append(
                 strings.CLEANING_SECTION_SKIPPED_LINE.format(
@@ -174,50 +228,91 @@ async def get_history_page(session: AsyncSession, page: int, page_size: int = 5)
 
 
 @dataclass
-class CleaningForecastEntry:
+class NextWeekCleaning:
     date: dt.date
     assignments: dict[str, tuple[User | None, str | None]]  # section -> (user, status or None if projected)
     is_projected: bool
 
 
-async def get_forecast(session: AsyncSession, days: int = 7, start_date: dt.date | None = None) -> list[CleaningForecastEntry]:
-    """Forecast of upcoming cleaning Sundays within the window. Unlike
-    trash, this is fully deterministic: the cleaning rotation always
-    advances by 3 positions the moment assignments are posted, regardless
-    of each section's eventual done/skip outcome — so there's no
-    skip-related drift to warn about here."""
-    start_date = start_date or now_local().date()
+async def get_next_week_assignments(session: AsyncSession, today: dt.date | None = None) -> NextWeekCleaning:
+    """Who cleans *next* cleaning week — the Sunday after whatever week is
+    currently posted, or the upcoming Sunday if nothing is posted yet.
+
+    In both cases the stored position already points at the trio that
+    hasn't been assigned yet (it advances the moment a week is posted), so
+    projecting straight off `position` is correct.
+    """
+    today = today or now_local().date()
+    upcoming = next_cleaning_day(today)
+
+    latest = (
+        await session.execute(
+            select(CleaningLog.week_start_date).order_by(CleaningLog.week_start_date.desc()).limit(1)
+        )
+    ).scalar()
+    target = latest + dt.timedelta(days=7) if latest is not None and latest >= upcoming else upcoming
+
+    existing = (
+        await session.execute(select(CleaningLog).where(CleaningLog.week_start_date == target))
+    ).scalars().all()
+    if existing:
+        assignments: dict[str, tuple[User | None, str | None]] = {}
+        for log in sorted(existing, key=lambda log: SECTION_ORDER.index(log.section)):
+            assignments[log.section] = (await session.get(User, log.user_id), log.status)
+        return NextWeekCleaning(date=target, assignments=assignments, is_projected=False)
+
     queue = await rotation.get_ordered_queue(session, CleaningRotation)
+    if not queue:
+        return NextWeekCleaning(date=target, assignments={}, is_projected=True)
+
     position = await settings_store.get_int(session, settings_store.CLEANING_CURRENT_POSITION, 0)
+    assignments = {}
+    for section, row in assign_sections(queue, position).items():
+        assignments[section] = (await session.get(User, row.user_id), None)
+    return NextWeekCleaning(date=target, assignments=assignments, is_projected=True)
 
-    entries: list[CleaningForecastEntry] = []
-    offset = 0
-    for i in range(days):
-        date = start_date + dt.timedelta(days=i)
-        if date.weekday() != 6:  # only Sundays are cleaning days
-            continue
 
-        existing = (
-            await session.execute(select(CleaningLog).where(CleaningLog.week_start_date == date))
-        ).scalars().all()
-        if existing:
-            assignments: dict[str, tuple[User | None, str | None]] = {}
-            for log in sorted(existing, key=lambda log: SECTION_ORDER.index(log.section)):
-                user = await session.get(User, log.user_id)
-                assignments[log.section] = (user, log.status)
-            entries.append(CleaningForecastEntry(date=date, assignments=assignments, is_projected=False))
-            continue
+async def get_pending_logs_for_nag(session: AsyncSession, today: dt.date | None = None) -> list[CleaningLog]:
+    """Sections still pending for a cleaning week that has already arrived.
 
-        if not queue:
-            entries.append(CleaningForecastEntry(date=date, assignments={}, is_projected=True))
-            continue
+    Future weeks are excluded so the nag doesn't fire on the same evening
+    the assignments were announced, and `missed` weeks are excluded because
+    _close_out_stale_pending has already retired them.
+    """
+    today = today or now_local().date()
+    result = await session.execute(
+        select(CleaningLog).where(CleaningLog.week_start_date <= today, CleaningLog.status == "pending")
+    )
+    return sorted(
+        result.scalars().all(), key=lambda log: (log.week_start_date, SECTION_ORDER.index(log.section))
+    )
 
-        raw = assign_sections(queue, position + offset)
-        assignments = {}
-        for section, row in raw.items():
-            user = await session.get(User, row.user_id)
-            assignments[section] = (user, None)
-        entries.append(CleaningForecastEntry(date=date, assignments=assignments, is_projected=True))
-        offset += 3
 
-    return entries
+async def post_pending_nag(bot: Bot, session: AsyncSession, today: dt.date | None = None) -> bool:
+    """Posts one channel reminder listing every section still not ticked.
+    Returns False (posting nothing) when there's nothing outstanding."""
+    logs = await get_pending_logs_for_nag(session, today)
+    if not logs:
+        return False
+
+    lines = [strings.CLEANING_NAG_HEADER]
+    for log in logs:
+        user = await session.get(User, log.user_id)
+        lines.append(strings.CLEANING_NAG_LINE.format(section=SECTION_LABELS[log.section], mention=mention(user)))
+    lines.append("")
+    lines.append(strings.CLEANING_NAG_FOOTER)
+    text = "\n".join(lines)
+
+    # Reply to the original assignment post where possible, so its buttons
+    # are one tap away instead of buried further up the channel.
+    reply_to = next((log.message_id for log in logs if log.message_id), None)
+    try:
+        await bot.send_message(
+            settings.house_channel_id, text, parse_mode="HTML", reply_to_message_id=reply_to
+        )
+    except TelegramBadRequest:
+        # Original post was deleted — send it unthreaded rather than lose the nag.
+        await bot.send_message(settings.house_channel_id, text, parse_mode="HTML")
+    return True
+
+

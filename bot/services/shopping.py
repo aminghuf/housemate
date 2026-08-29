@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import html
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import strings
 from bot.config import settings
-from bot.db.models import ShoppingItem, ShoppingListMessage
+from bot.db.models import ShoppingItem, ShoppingListMessage, User
 
 
 class ShoppingCB(CallbackData, prefix="shop"):
@@ -76,11 +77,29 @@ async def sync_channel_message(bot: Bot, session: AsyncSession) -> None:
         pass
 
 
+async def render_current_list(session: AsyncSession) -> tuple[str, InlineKeyboardMarkup | None]:
+    """The same list view the pinned channel message shows, for rendering
+    into a DM when someone opens the shopping menu."""
+    return _render(await _get_open_items(session))
+
+
 async def add_item(session: AsyncSession, bot: Bot, title: str, added_by: int) -> ShoppingItem:
     item = ShoppingItem(title=title, added_by=added_by)
     session.add(item)
     await session.flush()
     await sync_channel_message(bot, session)
+
+    # Announce each addition separately: editing the pinned message in place
+    # is silent, so without this nobody gets notified that something was added.
+    adder = await session.get(User, added_by)
+    await bot.send_message(
+        settings.house_channel_id,
+        strings.SHOPPING_ITEM_ADDED_CHANNEL.format(
+            adder=html.escape(adder.display_name if adder else str(added_by)),
+            title=html.escape(title),
+        ),
+        parse_mode="HTML",
+    )
     return item
 
 

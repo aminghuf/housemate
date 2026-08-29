@@ -20,6 +20,7 @@ from bot.utils import now_local
 
 TRASH_JOB_ID = "trash_daily_reminder"
 CLEANING_JOB_ID = "cleaning_weekly_reminder"
+CLEANING_NAG_JOB_ID = "cleaning_daily_nag"
 
 _bot: Bot | None = None
 _scheduler: AsyncIOScheduler | None = None
@@ -45,6 +46,11 @@ def reschedule_cleaning(weekday: int, hour: int, minute: int) -> None:
     register_cleaning_job(_scheduler, weekday, hour, minute, settings.timezone)
 
 
+def reschedule_cleaning_nag(hour: int, minute: int) -> None:
+    assert _scheduler is not None
+    register_cleaning_nag_job(_scheduler, hour, minute, settings.timezone)
+
+
 async def run_trash_job() -> None:
     """Fires the evening before each collection day (see
     register_trash_job) and posts the reminder for *tomorrow's* trash,
@@ -60,6 +66,15 @@ async def run_cleaning_job() -> None:
     assert _bot is not None
     async with async_session_factory() as session:
         await cleaning_service.create_weekly_assignments_and_post(_bot, session)
+        await session.commit()
+
+
+async def run_cleaning_nag_job() -> None:
+    """Daily chase-up for cleaning sections nobody has ticked off yet.
+    Posts nothing when everything is already handled."""
+    assert _bot is not None
+    async with async_session_factory() as session:
+        await cleaning_service.post_pending_nag(_bot, session)
         await session.commit()
 
 
@@ -81,5 +96,17 @@ def register_cleaning_job(scheduler: AsyncIOScheduler, weekday: int, hour: int, 
         run_cleaning_job,
         CronTrigger(day_of_week=weekday, hour=hour, minute=minute, timezone=timezone),
         id=CLEANING_JOB_ID,
+        replace_existing=True,
+    )
+
+
+def register_cleaning_nag_job(scheduler: AsyncIOScheduler, hour: int, minute: int, timezone: str) -> None:
+    # Runs every day; the job itself no-ops unless something is outstanding,
+    # and it skips the not-yet-arrived week so it can't double up with the
+    # weekly announcement posted the evening before cleaning day.
+    scheduler.add_job(
+        run_cleaning_nag_job,
+        CronTrigger(hour=hour, minute=minute, timezone=timezone),
+        id=CLEANING_NAG_JOB_ID,
         replace_existing=True,
     )

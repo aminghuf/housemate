@@ -41,13 +41,23 @@ class FakeBot:
     def __init__(self) -> None:
         self.sent: list[dict] = []
         self.edited: list[dict] = []
+        self.pinned: list[int] = []
         self._next_message_id = 1
 
-    async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None):
+    async def pin_chat_message(self, chat_id, message_id, disable_notification=False):
+        self.pinned.append(message_id)
+
+    async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None, reply_to_message_id=None):
         message = FakeMessage(message_id=self._next_message_id)
         self._next_message_id += 1
         self.sent.append(
-            {"chat_id": chat_id, "text": text, "reply_markup": reply_markup, "parse_mode": parse_mode}
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+                "reply_to_message_id": reply_to_message_id,
+            }
         )
         return message
 

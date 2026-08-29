@@ -14,11 +14,16 @@ membership in a household Telegram channel.
   evenly among active housemates, posted to the channel with a
   pay-yourself-off button per person, `/my_bills`, `/bills_history`,
   `/balance`.
-- 🛒 **Shopping list** — one live, pinned message in the channel; add
-  items, mark purchased, `/shopping_history`.
+- 🛒 **Shopping list** — one live, pinned message in the channel, plus the
+  same list (with tick buttons) in the bot DM; every addition is also
+  announced in the channel, since editing the pinned message in place is
+  silent. `/shopping_history` for what's been bought.
 - 🧹 **Cleaning turns** — weekly rotation across 3 sections (kitchen,
-  hall, bathroom), reminder with per-section ✅/➖ buttons, history, and a
-  `/cleaning_upcoming` 7-day forecast.
+  hall, bathroom), reminder with per-section ✅/➖ buttons, history, and
+  `/cleaning_upcoming` for next week's assignments. Sections nobody ticks
+  off get chased daily in the channel (21:00 by default), and a week that
+  goes unanswered is closed out as "missed" when the next week starts, so
+  the rotation always moves on.
 - 🙋 **Volunteering** — "✅ انداختم دور" / "✅ تمیز کردم" can be tapped by
   *any* housemate, not just whoever it's assigned to — covering someone
   else's turn is recorded (who was assigned vs. who actually did it) and
@@ -201,6 +206,7 @@ manually retag/pull a specific `:<sha>` and restart).
 | `/announce [text]` | Post an announcement to the channel (asks for text + confirms before posting if no text is given inline) |
 | `/set_trash_reminder_time HH:MM` | Change the daily trash reminder time |
 | `/set_cleaning_reminder <weekday> HH:MM` | Change the weekly cleaning reminder (weekday: `0`-`6`, Monday=`0`, or `mon`..`sun`) |
+| `/set_cleaning_nag_time HH:MM` | Change the daily chase-up time for cleaning sections still not ticked off |
 | `/trash_rotation [id1 id2 ...]` | View, or reorder, the trash duty queue |
 | `/cleaning_rotation [id1 id2 ...]` | View, or reorder, the cleaning queue |
 | `/setup_rotation id1 id2 ...` | Set the initial trash duty order |

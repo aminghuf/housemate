@@ -151,21 +151,34 @@ async def test_trash_forecast_with_no_housemates(session):
 
 
 @pytest.mark.asyncio
-async def test_cleaning_forecast_projects_multiple_sundays(session, make_user):
+async def test_next_week_assignments_projects_upcoming_sunday(session, make_user):
     users = [await make_user(uid) for uid in (1, 2, 3)]
     for u in users:
         await rotation.append_if_absent(session, CleaningRotation, u.telegram_id)
 
-    # 2026-08-02 and 2026-08-09 are both Sundays -> two projected weeks in a 14-day window.
-    entries = await cleaning_service.get_forecast(session, days=14, start_date=dt.date(2026, 7, 27))
+    # Monday 2026-07-27 -> upcoming cleaning Sunday is 2026-08-02.
+    entry = await cleaning_service.get_next_week_assignments(session, today=dt.date(2026, 7, 27))
 
-    assert len(entries) == 2
-    first, second = entries
-    assert first.is_projected is True
-    assert second.is_projected is True
+    assert entry.date == dt.date(2026, 8, 2)
+    assert entry.is_projected is True
+    assert entry.assignments[cleaning_service.KITCHEN][0].telegram_id == 1
+    assert entry.assignments[cleaning_service.HALL][0].telegram_id == 2
+    assert entry.assignments[cleaning_service.BATHROOM][0].telegram_id == 3
 
-    first_kitchen = first.assignments[cleaning_service.KITCHEN][0].telegram_id
-    second_kitchen = second.assignments[cleaning_service.KITCHEN][0].telegram_id
-    # position advances by 3 each week; with only 3 housemates, that wraps
-    # back to the same starting assignment next week.
-    assert first_kitchen == second_kitchen
+
+@pytest.mark.asyncio
+async def test_next_week_assignments_looks_past_the_posted_week(session, make_user, fake_bot):
+    users = [await make_user(uid) for uid in (1, 2, 3)]
+    for u in users:
+        await rotation.append_if_absent(session, CleaningRotation, u.telegram_id)
+
+    # Saturday: this week's assignments get posted for Sunday 2026-08-02.
+    await cleaning_service.create_weekly_assignments_and_post(session=session, bot=fake_bot, today=dt.date(2026, 8, 1))
+
+    entry = await cleaning_service.get_next_week_assignments(session, today=dt.date(2026, 8, 1))
+
+    # "next week" must be the Sunday *after* the one just announced.
+    assert entry.date == dt.date(2026, 8, 9)
+    assert entry.is_projected is True
+    # ...and with 3 housemates it must not repeat this week's trio.
+    assert entry.assignments[cleaning_service.KITCHEN][0].telegram_id == 2
