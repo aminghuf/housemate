@@ -11,7 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot.config import settings
 from bot.db.session import async_session_factory
-from bot.handlers import admin, bills, cleaning, onboarding, shopping, trash
+from bot.handlers import admin, admin_ui, bills, cleaning, onboarding, shopping, trash
 from bot.middlewares.db import DBSessionMiddleware
 from bot.middlewares.membership import MembershipMiddleware
 from bot.scheduler import jobs
@@ -65,6 +65,7 @@ def _build_dispatcher() -> Dispatcher:
     dp.include_router(shopping.router)
     dp.include_router(cleaning.router)
     dp.include_router(admin.router)
+    dp.include_router(admin_ui.router)
 
     return dp
 

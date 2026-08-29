@@ -201,9 +201,28 @@ manually retag/pull a specific `:<sha>` and restart).
 
 ## Admin commands
 
+Most day-to-day admin work is done from the **⚙️ تنظیمات** menu, which opens
+a button panel — no commands to memorise:
+
+- **👥 هم‌خونه‌ای‌ها** — the full list of everyone who ever registered. Tap a
+  name to toggle them active/inactive; deactivating removes them from both
+  rotations and reactivating puts them back, with history preserved either
+  way. "➕ افزودن دستی" adds someone by Telegram ID for the rare case where
+  they can't just `/start` the bot themselves.
+- **🗑️ چرخه زباله / 🧹 چرخه نظافت** — the rotation order, with 👉 marking
+  whose turn it currently is. Each person has ⬆️ / ⬇️ to reorder and ❌ to
+  drop them from that rotation (they stay a housemate). Active housemates
+  missing from a rotation appear as ➕ buttons to add back. **Reordering
+  never changes whose turn it is** — the marker follows the person, and
+  removing the person on duty passes the turn to whoever was next.
+
+The equivalent commands still work: `/housemates`, `/rotations`.
+
 | Command | Description |
 |---|---|
 | `/announce [text]` | Post an announcement to the channel (asks for text + confirms before posting if no text is given inline) |
+| `/housemates` | Open the housemates panel |
+| `/rotations` | Open the rotation panels |
 | `/set_trash_reminder_time HH:MM` | Change the daily trash reminder time |
 | `/set_cleaning_reminder <weekday> HH:MM` | Change the weekly cleaning reminder (weekday: `0`-`6`, Monday=`0`, or `mon`..`sun`) |
 | `/set_cleaning_nag_time HH:MM` | Change the daily chase-up time for cleaning sections still not ticked off |

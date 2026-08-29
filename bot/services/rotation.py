@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import CleaningRotation, TrashRotation
+from bot.services import settings_store
 
 RotationModel = TypeVar("RotationModel", TrashRotation, CleaningRotation)
 
@@ -65,6 +66,82 @@ def advance_position(current_position: int, queue_length: int, step: int = 1) ->
     if queue_length == 0:
         return 0
     return (current_position + step) % queue_length
+
+
+async def _anchor_user_id(session: AsyncSession, model: type[RotationModel], position_key: str) -> int | None:
+    """Whoever the stored position currently points at."""
+    queue = await get_ordered_queue(session, model)
+    row = user_at(queue, await settings_store.get_int(session, position_key, 0))
+    return row.user_id if row else None
+
+
+async def _restore_anchor(
+    session: AsyncSession, model: type[RotationModel], position_key: str, anchor_user_id: int | None
+) -> None:
+    """Re-points the stored position at `anchor_user_id` after the queue was
+    edited, so shuffling the order doesn't silently hand the current turn to
+    somebody else. Falls back to clamping when the anchor has left."""
+    queue = await get_ordered_queue(session, model)
+    if not queue:
+        await settings_store.set_setting(session, position_key, "0")
+        return
+    for idx, row in enumerate(queue):
+        if row.user_id == anchor_user_id:
+            await settings_store.set_setting(session, position_key, str(idx))
+            return
+    position = await settings_store.get_int(session, position_key, 0)
+    await settings_store.set_setting(session, position_key, str(position % len(queue)))
+
+
+async def move_user(
+    session: AsyncSession, model: type[RotationModel], position_key: str, user_id: int, delta: int
+) -> bool:
+    """Swaps a person one slot up (-1) or down (+1). Returns False when they
+    aren't in the queue or are already at the end they're moving toward."""
+    queue = await get_ordered_queue(session, model)
+    user_ids = [row.user_id for row in queue]
+    if user_id not in user_ids:
+        return False
+
+    index = user_ids.index(user_id)
+    target = index + delta
+    if not 0 <= target < len(user_ids):
+        return False
+
+    anchor = await _anchor_user_id(session, model, position_key)
+    user_ids[index], user_ids[target] = user_ids[target], user_ids[index]
+    await reorder(session, model, user_ids)
+    await _restore_anchor(session, model, position_key, anchor)
+    return True
+
+
+async def remove_user_keeping_turn(
+    session: AsyncSession, model: type[RotationModel], position_key: str, user_id: int
+) -> bool:
+    """Drops someone from the queue. If it was their turn, it passes to
+    whoever came after them rather than to an arbitrary index."""
+    queue = await get_ordered_queue(session, model)
+    user_ids = [row.user_id for row in queue]
+    if user_id not in user_ids:
+        return False
+
+    anchor = await _anchor_user_id(session, model, position_key)
+    if anchor == user_id:
+        index = user_ids.index(user_id)
+        anchor = user_ids[(index + 1) % len(user_ids)] if len(user_ids) > 1 else None
+
+    await remove_user(session, model, user_id)
+    await _restore_anchor(session, model, position_key, anchor)
+    return True
+
+
+async def add_user_keeping_turn(
+    session: AsyncSession, model: type[RotationModel], position_key: str, user_id: int
+) -> None:
+    """Appends someone to the end of the queue, leaving the current turn put."""
+    anchor = await _anchor_user_id(session, model, position_key)
+    await append_if_absent(session, model, user_id)
+    await _restore_anchor(session, model, position_key, anchor)
 
 
 def user_at(queue: Sequence[RotationModel], position: int) -> RotationModel | None:

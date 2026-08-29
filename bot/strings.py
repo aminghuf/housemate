@@ -146,8 +146,8 @@ ADMIN_MENU_TEXT = (
     "/set_trash_reminder_time HH:MM\n"
     "/set_cleaning_reminder <weekday 0-6|mon..sun> HH:MM\n"
     "/set_cleaning_nag_time HH:MM\n"
-    "/trash_rotation [id1 id2 ...]\n"
-    "/cleaning_rotation [id1 id2 ...]\n"
+    "/housemates — مدیریت هم‌خونه‌ای‌ها\n"
+    "/rotations — مدیریت چرخه‌ها\n"
     "/setup_rotation id1 id2 ...\n"
     "/add_housemate <id> <name>\n"
     "/remove_housemate <id>"
@@ -169,6 +169,48 @@ ADMIN_REMOVE_HOUSEMATE_USAGE = "استفاده: /remove_housemate <telegram_id>"
 ADMIN_HOUSEMATE_REMOVED = "{name} از چرخه‌ها حذف شد (تاریخچه‌ش نگه داشته میشه)."
 ADMIN_HOUSEMATE_NOT_FOUND = "همچین کسی پیدا نشد."
 WEEKDAY_LABELS_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"]
+
+# --- Admin panels (button-driven, no commands needed) ---
+ADMIN_PANEL_HOUSEMATES_BUTTON = "👥 هم‌خونه‌ای‌ها"
+ADMIN_PANEL_TRASH_ROTATION_BUTTON = "🗑️ چرخه زباله"
+ADMIN_PANEL_CLEANING_ROTATION_BUTTON = "🧹 چرخه نظافت"
+ADMIN_PANEL_BACK_BUTTON = "⬅️ برگشت"
+
+HOUSEMATES_HEADER = "👥 هم‌خونه‌ای‌ها"
+HOUSEMATES_HINT = (
+    "روی هر اسم بزنی وضعیتش عوض میشه:\n"
+    "✅ فعال — توی چرخه‌ها هست\n"
+    "❌ غیرفعال — از چرخه‌ها خارجه (تاریخچه‌ش می‌مونه)"
+)
+HOUSEMATES_EMPTY = "هنوز کسی ثبت‌نام نکرده. هرکس /start رو توی خصوصی ربات بزنه اینجا میاد."
+HOUSEMATE_ROW_ACTIVE = "✅ {name}"
+HOUSEMATE_ROW_INACTIVE = "❌ {name}"
+HOUSEMATE_TOGGLED_ON = "{name} فعال شد ✅"
+HOUSEMATE_TOGGLED_OFF = "{name} غیرفعال شد ❌"
+HOUSEMATE_ADD_MANUAL_BUTTON = "➕ افزودن دستی"
+HOUSEMATE_ADD_ASK_ID = (
+    "آیدی عددی تلگرام طرف رو بفرست.\n"
+    "(معمولاً لازم نیست — کافیه خودش /start رو بزنه.)"
+)
+HOUSEMATE_ADD_INVALID_ID = "آیدی باید فقط عدد باشه."
+HOUSEMATE_ADD_ASK_NAME = "حالا اسمش رو بفرست."
+
+ROTATION_PICK_HEADER = "کدوم چرخه رو می‌خوای مدیریت کنی؟"
+ROTATION_TRASH_HEADER = "🗑️ چرخه نوبت زباله"
+ROTATION_CLEANING_HEADER = "🧹 چرخه نوبت نظافت"
+ROTATION_PANEL_HINT = (
+    "👉 = نوبت فعلی\n"
+    "با ⬆️ و ⬇️ ترتیب رو عوض کن، با ❌ از این چرخه حذف کن "
+    "(هم‌خونه‌ای باقی می‌مونه)."
+)
+ROTATION_PANEL_EMPTY = "این چرخه خالیه."
+ROTATION_PANEL_LINE = "{marker}{position}. {name}"
+ROTATION_CURRENT_MARKER = "👉 "
+ROTATION_ADD_MISSING_LABEL = "➕ {name}"
+ROTATION_MOVED = "جابه‌جا شد"
+ROTATION_AT_EDGE = "همین‌جا آخرشه"
+ROTATION_USER_REMOVED = "{name} از این چرخه حذف شد"
+ROTATION_USER_ADDED = "{name} به این چرخه اضافه شد"
 
 ADMIN_ANNOUNCE_BUTTON = "📢 اعلامیه جدید"
 ADMIN_ANNOUNCE_ASK_TEXT = "متن اعلامیه رو بفرست."

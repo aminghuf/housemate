@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot import strings
 from bot.config import settings
 from bot.db.models import CleaningRotation, TrashRotation
+from bot.handlers import admin_ui
 from bot.scheduler import jobs
 from bot.services import admin as admin_service
 from bot.services import rotation, settings_store
@@ -31,17 +32,12 @@ async def _require_admin(message: Message) -> bool:
     return True
 
 
-def _admin_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=strings.ADMIN_ANNOUNCE_BUTTON, callback_data="admin_menu:announce")]]
-    )
-
-
 @router.message(F.text == strings.MENU_ADMIN)
 async def admin_menu(message: Message) -> None:
     if not await _require_admin(message):
         return
-    await message.answer(strings.ADMIN_MENU_TEXT, reply_markup=_admin_menu_keyboard())
+    # Panel buttons (housemates / rotations / announce) live in admin_ui.
+    await message.answer(strings.ADMIN_MENU_TEXT, reply_markup=admin_ui.admin_panel_keyboard())
 
 
 async def _send_announce_preview(message: Message, text: str) -> None:
@@ -175,23 +171,19 @@ async def set_cleaning_nag_time(message: Message, session: AsyncSession, command
     await message.answer(strings.ADMIN_CLEANING_NAG_TIME_SET.format(time=time_str))
 
 
-async def _rotation_command(message: Message, session: AsyncSession, command: CommandObject, model: type) -> None:
+async def _rotation_command(
+    message: Message, session: AsyncSession, command: CommandObject, model: type, kind: str
+) -> None:
     if not await _require_admin(message):
         return
 
     args = (command.args or "").split()
     if not args:
-        queue = await rotation.get_ordered_queue(session, model)
-        if not queue:
-            await message.answer(strings.ADMIN_ROTATION_EMPTY)
-            return
-        lines = [strings.ADMIN_ROTATION_HEADER]
-        for row in queue:
-            user = row.user
-            lines.append(strings.ADMIN_ROTATION_LINE.format(position=row.position + 1, name=user.display_name))
-        lines.append("")
-        lines.append(strings.ADMIN_ROTATION_USAGE)
-        await message.answer("\n".join(lines))
+        # Show the interactive panel instead of a static list. (The old
+        # listing read `row.user`, a lazily-loaded relationship, which
+        # raises MissingGreenlet on the async session.)
+        text, keyboard = await admin_ui.render_rotation(session, kind)
+        await message.answer(text, reply_markup=keyboard)
         return
 
     try:
@@ -211,12 +203,12 @@ async def _rotation_command(message: Message, session: AsyncSession, command: Co
 
 @router.message(Command("trash_rotation"))
 async def trash_rotation(message: Message, session: AsyncSession, command: CommandObject) -> None:
-    await _rotation_command(message, session, command, TrashRotation)
+    await _rotation_command(message, session, command, TrashRotation, admin_ui.TRASH)
 
 
 @router.message(Command("cleaning_rotation"))
 async def cleaning_rotation(message: Message, session: AsyncSession, command: CommandObject) -> None:
-    await _rotation_command(message, session, command, CleaningRotation)
+    await _rotation_command(message, session, command, CleaningRotation, admin_ui.CLEANING)
 
 
 @router.message(Command("setup_rotation"))

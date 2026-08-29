@@ -3,11 +3,12 @@ from __future__ import annotations
 import datetime as dt
 import re
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import strings
 from bot.db.models import AuditLog, CleaningRotation, TrashRotation, User
-from bot.services import rotation
+from bot.services import rotation, settings_store
 
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 _WEEKDAY_NAMES = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
@@ -79,7 +80,35 @@ async def remove_housemate(session: AsyncSession, telegram_id: int) -> User | No
     if user is None:
         return None
     user.is_active = False
-    await rotation.remove_user(session, TrashRotation, telegram_id)
-    await rotation.remove_user(session, CleaningRotation, telegram_id)
+    await rotation.remove_user_keeping_turn(
+        session, TrashRotation, settings_store.TRASH_CURRENT_POSITION, telegram_id
+    )
+    await rotation.remove_user_keeping_turn(
+        session, CleaningRotation, settings_store.CLEANING_CURRENT_POSITION, telegram_id
+    )
     await session.flush()
     return user
+
+
+async def reactivate_housemate(session: AsyncSession, telegram_id: int) -> User | None:
+    """Undoes a soft-remove: marks them active again and puts them back at
+    the end of both rotations."""
+    user = await session.get(User, telegram_id)
+    if user is None:
+        return None
+    user.is_active = True
+    await rotation.add_user_keeping_turn(
+        session, TrashRotation, settings_store.TRASH_CURRENT_POSITION, telegram_id
+    )
+    await rotation.add_user_keeping_turn(
+        session, CleaningRotation, settings_store.CLEANING_CURRENT_POSITION, telegram_id
+    )
+    await session.flush()
+    return user
+
+
+async def list_housemates(session: AsyncSession) -> list[User]:
+    """Everyone who ever registered, active first then by name, so the
+    admin panel can show and toggle them."""
+    result = await session.execute(select(User).order_by(User.is_active.desc(), User.display_name))
+    return list(result.scalars().all())
