@@ -1,0 +1,21 @@
+# Secrets — must never be baked into the image. The container gets its
+# config from env vars / env_file at run time (see docker-compose.yml).
+.env
+.env.*
+!.env.example
+
+# Local state that would otherwise ship inside the image
+data/
+*.db
+*.sqlite3
+
+# Dev-only cruft
+.git
+.gitignore
+.github
+.venv
+venv
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
