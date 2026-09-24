@@ -124,6 +124,102 @@ async def create_weekly_assignments_and_post(
     return logs
 
 
+async def snapshot_queue(session: AsyncSession) -> list[int]:
+    """The cleaning queue as it stands before an admin edit. Pass it to
+    apply_rotation_change so a removed housemate's slot can be resolved."""
+    return [row.user_id for row in await rotation.get_ordered_queue(session, CleaningRotation)]
+
+
+async def apply_rotation_change(
+    bot: Bot, session: AsyncSession, previous_queue_ids: Sequence[int], *, today: dt.date | None = None
+) -> bool:
+    """Re-plans cleaning after an admin edits the rotation.
+
+    Posting a week freezes its assignments into CleaningLog rows and points
+    the stored position at next week's trio, so an edit made afterwards
+    would otherwise leave the announced week untouched and next week
+    projected off stale neighbours (often repeating the trio that was just
+    posted). Instead, the latest posted week stays anchored on its kitchen
+    person — the turn follows the person, as elsewhere — and everything
+    around them is re-dealt from the new order:
+
+    - still-pending sections of that week are reassigned if it hasn't
+      passed yet, and its channel post is edited to match;
+    - the position for the following week is recomputed from it.
+
+    Returns True when the posted week's assignments changed.
+    """
+    latest = (
+        await session.execute(select(CleaningLog.week_start_date).order_by(CleaningLog.week_start_date.desc()).limit(1))
+    ).scalar()
+    if latest is None:
+        return False
+    queue = await rotation.get_ordered_queue(session, CleaningRotation)
+    if not queue:
+        return False
+
+    logs = (await session.execute(select(CleaningLog).where(CleaningLog.week_start_date == latest))).scalars().all()
+    kitchen = next((log for log in logs if log.section == KITCHEN), None)
+    if kitchen is None:
+        return False
+
+    queue_ids = [row.user_id for row in queue]
+    start = _resolve_anchor_index(kitchen.user_id, queue_ids, previous_queue_ids)
+    if start is None:
+        return False
+
+    new_position = rotation.advance_position(start, len(queue), step=weekly_rotation_step(len(queue)))
+    await settings_store.set_setting(session, settings_store.CLEANING_CURRENT_POSITION, str(new_position))
+
+    today = today or now_local().date()
+    if latest < today:
+        # That cleaning day is already behind us; don't rewrite who was on the hook.
+        return False
+
+    changed = False
+    for section, row in assign_sections(queue, start).items():
+        log = next((log for log in logs if log.section == section), None)
+        if log is not None and log.status == "pending" and log.user_id != row.user_id:
+            log.user_id = row.user_id
+            changed = True
+    if not changed:
+        return False
+    await session.flush()
+
+    message_id = next((log.message_id for log in logs if log.message_id), None)
+    if message_id is not None:
+        text, keyboard = await _render_message(session, logs)
+        try:
+            await bot.edit_message_text(
+                chat_id=settings.house_channel_id,
+                message_id=message_id,
+                text=text,
+                reply_markup=keyboard,
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest:
+            # Post was deleted or is unchanged — the DB is still correct.
+            pass
+    return True
+
+
+def _resolve_anchor_index(
+    anchor_user_id: int, queue_ids: Sequence[int], previous_queue_ids: Sequence[int]
+) -> int | None:
+    """Where the anchor sits in the new queue. If they were just removed,
+    whoever followed them in the old order takes over their slot."""
+    if anchor_user_id in queue_ids:
+        return queue_ids.index(anchor_user_id)
+    if anchor_user_id not in previous_queue_ids:
+        return None
+    index = list(previous_queue_ids).index(anchor_user_id)
+    for offset in range(1, len(previous_queue_ids)):
+        successor = previous_queue_ids[(index + offset) % len(previous_queue_ids)]
+        if successor in queue_ids:
+            return queue_ids.index(successor)
+    return None
+
+
 async def _render_message(session: AsyncSession, logs: Sequence[CleaningLog]) -> tuple[str, InlineKeyboardMarkup | None]:
     ordered = sorted(logs, key=lambda log: SECTION_ORDER.index(log.section))
     lines = [strings.CLEANING_HEADER]

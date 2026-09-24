@@ -184,3 +184,103 @@ async def test_nag_stops_chasing_a_week_that_already_rolled_over(session, make_u
 @pytest.mark.asyncio
 async def test_nag_is_silent_when_no_assignments_exist(session, fake_bot):
     assert await cleaning_service.post_pending_nag(fake_bot, session, today=SUNDAY) is False
+
+
+async def _move(session, user_id, delta):
+    await rotation.move_user(
+        session, CleaningRotation, settings_store.CLEANING_CURRENT_POSITION, user_id, delta
+    )
+
+
+@pytest.mark.asyncio
+async def test_reordering_updates_the_posted_upcoming_week(session, make_user, fake_bot):
+    """Regression: editing the rotation after Saturday's post left the
+    announced week untouched and projected next week off stale neighbours,
+    so the same people could come up two weeks running."""
+    await _seed(session, make_user, 5)
+    week = await cleaning_service.create_weekly_assignments_and_post(
+        session=session, bot=fake_bot, today=SATURDAY_BEFORE
+    )
+    assert {log.section: log.user_id for log in week} == {"kitchen": 1, "hall": 2, "bathroom": 3}
+
+    previous = await cleaning_service.snapshot_queue(session)
+    await _move(session, 4, -1)
+    await _move(session, 4, -1)  # queue is now 1, 4, 2, 3, 5
+    changed = await cleaning_service.apply_rotation_change(fake_bot, session, previous, today=SATURDAY_BEFORE)
+
+    assert changed is True
+    for log in week:
+        await session.refresh(log)
+    assert {log.section: log.user_id for log in week} == {"kitchen": 1, "hall": 4, "bathroom": 2}
+    assert fake_bot.edited[-1]["message_id"] == week[0].message_id
+
+    forecast = await cleaning_service.get_next_week_assignments(session, today=SATURDAY_BEFORE)
+    assert {s: user.telegram_id for s, (user, _) in forecast.assignments.items()} == {
+        "kitchen": 3,
+        "hall": 5,
+        "bathroom": 1,
+    }
+
+
+@pytest.mark.asyncio
+async def test_rotation_change_keeps_sections_already_done(session, make_user, fake_bot):
+    await _seed(session, make_user, 5)
+    week = await cleaning_service.create_weekly_assignments_and_post(
+        session=session, bot=fake_bot, today=SATURDAY_BEFORE
+    )
+    hall = next(log for log in week if log.section == "hall")
+    await cleaning_service.handle_response(session, fake_bot, hall.id, "done", 2)
+
+    previous = await cleaning_service.snapshot_queue(session)
+    await _move(session, 4, -1)
+    await _move(session, 4, -1)
+    await cleaning_service.apply_rotation_change(fake_bot, session, previous, today=SATURDAY_BEFORE)
+
+    for log in week:
+        await session.refresh(log)
+    assert {log.section: (log.user_id, log.status) for log in week} == {
+        "kitchen": (1, "pending"),
+        "hall": (2, "done"),
+        "bathroom": (2, "pending"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_removing_an_assigned_housemate_hands_their_section_on(session, make_user, fake_bot):
+    await _seed(session, make_user, 5)
+    week = await cleaning_service.create_weekly_assignments_and_post(
+        session=session, bot=fake_bot, today=SATURDAY_BEFORE
+    )
+
+    previous = await cleaning_service.snapshot_queue(session)
+    await rotation.remove_user_keeping_turn(
+        session, CleaningRotation, settings_store.CLEANING_CURRENT_POSITION, 1
+    )
+    await cleaning_service.apply_rotation_change(fake_bot, session, previous, today=SATURDAY_BEFORE)
+
+    for log in week:
+        await session.refresh(log)
+    assert {log.section: log.user_id for log in week} == {"kitchen": 2, "hall": 3, "bathroom": 4}
+
+
+@pytest.mark.asyncio
+async def test_rotation_change_leaves_a_past_week_alone_but_replans_the_next(session, make_user, fake_bot):
+    await _seed(session, make_user, 5)
+    week = await cleaning_service.create_weekly_assignments_and_post(
+        session=session, bot=fake_bot, today=SATURDAY_BEFORE
+    )
+    edits_before = len(fake_bot.edited)
+
+    previous = await cleaning_service.snapshot_queue(session)
+    await _move(session, 4, -1)
+    await _move(session, 4, -1)
+    changed = await cleaning_service.apply_rotation_change(
+        fake_bot, session, previous, today=SUNDAY + dt.timedelta(days=2)
+    )
+
+    assert changed is False
+    for log in week:
+        await session.refresh(log)
+    assert {log.section: log.user_id for log in week} == {"kitchen": 1, "hall": 2, "bathroom": 3}
+    assert len(fake_bot.edited) == edits_before
+    assert await settings_store.get_int(session, settings_store.CLEANING_CURRENT_POSITION, 0) == 3

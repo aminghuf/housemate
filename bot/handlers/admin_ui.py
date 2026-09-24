@@ -20,6 +20,7 @@ from bot import strings
 from bot.config import settings
 from bot.db.models import CleaningRotation, TrashRotation, User
 from bot.services import admin as admin_service
+from bot.services import cleaning as cleaning_service
 from bot.services import rotation, settings_store
 
 router = Router(name="admin_ui")
@@ -157,6 +158,7 @@ async def toggle_housemate(query: CallbackQuery, callback_data: HouseCB, session
         await query.answer(strings.ADMIN_HOUSEMATE_NOT_FOUND, show_alert=True)
         return
 
+    previous_cleaning_queue = await cleaning_service.snapshot_queue(session)
     if user.is_active:
         await admin_service.remove_housemate(session, user.telegram_id)
         toast = strings.HOUSEMATE_TOGGLED_OFF.format(name=user.display_name)
@@ -165,6 +167,7 @@ async def toggle_housemate(query: CallbackQuery, callback_data: HouseCB, session
         await admin_service.reactivate_housemate(session, user.telegram_id)
         toast = strings.HOUSEMATE_TOGGLED_ON.format(name=user.display_name)
         action = "panel_reactivate_housemate"
+    await cleaning_service.apply_rotation_change(query.bot, session, previous_cleaning_queue)
 
     await admin_service.log_action(session, query.from_user.id, action, str(user.telegram_id))
     await query.answer(toast)
@@ -314,6 +317,7 @@ async def handle_rotation_action(query: CallbackQuery, callback_data: RotCB, ses
 
     user = await session.get(User, callback_data.user_id)
     name = user.display_name if user else str(callback_data.user_id)
+    previous_cleaning_queue = await cleaning_service.snapshot_queue(session)
 
     if action in ("up", "down"):
         moved = await rotation.move_user(
@@ -341,5 +345,7 @@ async def handle_rotation_action(query: CallbackQuery, callback_data: RotCB, ses
         await query.answer()
         return
 
+    if kind == CLEANING:
+        await cleaning_service.apply_rotation_change(query.bot, session, previous_cleaning_queue)
     text, keyboard = await render_rotation(session, kind)
     await _edit_in_place(query, text, keyboard)

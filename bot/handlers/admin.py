@@ -15,6 +15,7 @@ from bot.db.models import CleaningRotation, TrashRotation
 from bot.handlers import admin_ui
 from bot.scheduler import jobs
 from bot.services import admin as admin_service
+from bot.services import cleaning as cleaning_service
 from bot.services import rotation, settings_store
 
 router = Router(name="admin")
@@ -192,10 +193,13 @@ async def _rotation_command(
         await message.answer(strings.ADMIN_ROTATION_USAGE)
         return
 
+    previous_cleaning_queue = await cleaning_service.snapshot_queue(session)
     error = await admin_service.reorder_rotation(session, model, new_order)
     if error:
         await message.answer(error)
         return
+    if model is CleaningRotation:
+        await cleaning_service.apply_rotation_change(message.bot, session, previous_cleaning_queue)
 
     await admin_service.log_action(session, message.from_user.id, f"reorder_{model.__tablename__}", " ".join(args))
     await message.answer(strings.ADMIN_ROTATION_REORDERED)
@@ -243,7 +247,9 @@ async def add_housemate(message: Message, session: AsyncSession, command: Comman
         await message.answer(strings.ADMIN_HOUSEMATE_USAGE)
         return
     telegram_id, display_name = int(parts[0]), parts[1].strip()
+    previous_cleaning_queue = await cleaning_service.snapshot_queue(session)
     user = await admin_service.add_housemate(session, telegram_id, display_name)
+    await cleaning_service.apply_rotation_change(message.bot, session, previous_cleaning_queue)
     await admin_service.log_action(session, message.from_user.id, "add_housemate", str(telegram_id))
     await message.answer(strings.ADMIN_HOUSEMATE_ADDED.format(name=user.display_name))
 
@@ -257,9 +263,11 @@ async def remove_housemate(message: Message, session: AsyncSession, command: Com
         await message.answer(strings.ADMIN_REMOVE_HOUSEMATE_USAGE)
         return
     telegram_id = int(args[0])
+    previous_cleaning_queue = await cleaning_service.snapshot_queue(session)
     user = await admin_service.remove_housemate(session, telegram_id)
     if user is None:
         await message.answer(strings.ADMIN_HOUSEMATE_NOT_FOUND)
         return
+    await cleaning_service.apply_rotation_change(message.bot, session, previous_cleaning_queue)
     await admin_service.log_action(session, message.from_user.id, "remove_housemate", str(telegram_id))
     await message.answer(strings.ADMIN_HOUSEMATE_REMOVED.format(name=user.display_name))
